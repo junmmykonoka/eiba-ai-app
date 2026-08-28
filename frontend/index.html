@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KeibaAI - 競馬予想＆出馬表システム</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar: Race Selection & Actions -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo-icon">🏇</div>
+                <div class="brand-text">
+                    <h1>KeibaAI</h1>
+                    <span class="badge-free">完全無料版</span>
+                </div>
+            </div>
+
+            <!-- Schedule & Calendar Explorer Trigger -->
+            <button id="openScheduleModalBtn" class="btn btn-schedule">
+                <span class="btn-icon">📅</span>
+                <span>開催日程・競馬場から探す</span>
+            </button>
+
+            <div class="sidebar-section">
+                <div class="section-title">
+                    <span>保存済みレース一覧</span>
+                    <button id="refreshRacesBtn" class="icon-btn" title="更新">🔄</button>
+                </div>
+                <div id="raceList" class="race-list">
+                    <div class="loading-state">レース読込中...</div>
+                </div>
+            </div>
+
+            <!-- Manual URL/ID Scraper -->
+            <div class="sidebar-section scraper-box">
+                <div class="section-title">URL / ID 直接指定取得</div>
+                <p class="section-desc">netkeibaの出馬表URLをそのまま貼り付け</p>
+                <div class="input-group">
+                    <input type="text" id="scrapeInput" placeholder="URLまたは12桁ID">
+                    <button id="scrapeBtn" class="btn btn-primary">取得</button>
+                </div>
+                <button id="reseedBtn" class="btn btn-secondary mt-2">サンプルレースを復元</button>
+            </div>
+        </aside>
+
+        <!-- Main Content: Race Card Dashboard -->
+        <main class="main-content">
+            <!-- Race Header Banner -->
+            <header id="raceHeader" class="race-header">
+                <div class="race-header-top">
+                    <div class="race-meta-tags">
+                        <span id="raceDate" class="tag tag-date">-</span>
+                        <span id="raceCourse" class="tag tag-course">-</span>
+                        <span id="raceClass" class="tag tag-class">-</span>
+                    </div>
+                    <div class="race-actions">
+                        <button id="runAiPredictBtn" class="btn btn-ai-predict">
+                            <span class="ai-sparkle">✨</span>
+                            <span>🤖 AI予想を実行 (LightGBM)</span>
+                        </button>
+                        <button id="deleteRaceBtn" class="btn btn-danger-outline btn-sm">削除</button>
+                    </div>
+                </div>
+
+                <div class="race-title-row">
+                    <span id="raceNumBadge" class="race-num-badge">11R</span>
+                    <h2 id="raceName" class="race-name">レースを選択してください</h2>
+                </div>
+
+                <div class="race-conditions">
+                    <div class="cond-item">
+                        <span class="cond-label">発走時刻</span>
+                        <span id="raceStartTime" class="cond-val">-</span>
+                    </div>
+                    <div class="cond-item">
+                        <span class="cond-label">コース・距離</span>
+                        <span id="raceTrackDist" class="cond-val">-</span>
+                    </div>
+                    <div class="cond-item">
+                        <span class="cond-label">天候 / 馬場</span>
+                        <span id="raceCondition" class="cond-val">-</span>
+                    </div>
+                    <div class="cond-item">
+                        <span class="cond-label">頭数</span>
+                        <span id="raceEntryCount" class="cond-val">-</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- AI Recommendation Highlight Banner -->
+            <div id="aiSummaryBanner" class="ai-summary-banner" style="display: none;">
+                <div class="ai-banner-badge">🎯 AI推奨買い目</div>
+                <div class="ai-picks-grid">
+                    <div class="ai-pick-card pick-honmei">
+                        <div class="pick-mark">◎ 本命</div>
+                        <div class="pick-horse" id="pickHonmeiHorse">-</div>
+                        <div class="pick-meta" id="pickHonmeiMeta">-</div>
+                    </div>
+                    <div class="ai-pick-card pick-taikou">
+                        <div class="pick-mark">◯ 対抗</div>
+                        <div class="pick-horse" id="pickTaikouHorse">-</div>
+                        <div class="pick-meta" id="pickTaikouMeta">-</div>
+                    </div>
+                    <div class="ai-pick-card pick-ana">
+                        <div class="pick-mark">▲ 妙味穴馬</div>
+                        <div class="pick-horse" id="pickAnaHorse">-</div>
+                        <div class="pick-meta" id="pickAnaMeta">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Controls & Filters -->
+            <section class="table-controls">
+                <div class="view-tabs">
+                    <button class="tab-btn active" data-sort="horse_number">馬番順</button>
+                    <button class="tab-btn" data-sort="odds">人気・オッズ順</button>
+                    <button class="tab-btn" data-sort="ai_score">🤖 AIスコア順</button>
+                </div>
+                <div class="ai-status-pill">
+                    <span class="ai-dot"></span>
+                    <span id="aiStatusText">AI予測エンジン: 稼働中 (勾配ブースティング)</span>
+                </div>
+            </section>
+
+            <!-- Race Card Table -->
+            <div class="table-container">
+                <table class="race-table" id="raceTable">
+                    <thead>
+                        <tr>
+                            <th class="col-waku">枠</th>
+                            <th class="col-uma">馬番</th>
+                            <th class="col-horse">馬名 / 性齢</th>
+                            <th class="col-jockey">騎手 / 斤量</th>
+                            <th class="col-trainer">調教師 / 馬体重</th>
+                            <th class="col-odds">単勝オッズ</th>
+                            <th class="col-pop">人気</th>
+                            <th class="col-ai">🤖 AI予想 / 期待値</th>
+                        </tr>
+                    </thead>
+                    <tbody id="entriesBody">
+                        <!-- Dynamic Entry Rows -->
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Calendar & Venue Search Modal -->
+    <div id="scheduleModal" class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <span class="modal-icon">📅</span>
+                    <h3>開催日程・競馬場から探す</h3>
+                </div>
+                <button id="closeScheduleModalBtn" class="modal-close-btn">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Date Selector Row -->
+                <div class="date-selector-row">
+                    <div class="date-input-wrap">
+                        <label for="scheduleDateInput">開催日を選択:</label>
+                        <input type="date" id="scheduleDateInput">
+                    </div>
+                    <div class="quick-dates">
+                        <button class="chip-btn" data-date="today">今日</button>
+                        <button class="chip-btn" data-date="2024-05-26">ダービー日 (5/26)</button>
+                        <button class="chip-btn" data-date="2024-12-22">有馬記念日 (12/22)</button>
+                    </div>
+                    <button id="fetchScheduleBtn" class="btn btn-primary">開催レース検索</button>
+                </div>
+
+                <div id="scheduleLoading" class="schedule-loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <span>開催スケジュールを取得中...</span>
+                </div>
+
+                <!-- Venues Tabs -->
+                <div id="venueTabsContainer" class="venue-tabs-container" style="display: none;">
+                    <div class="venue-header-row">
+                        <div id="venueTabs" class="venue-tabs"></div>
+                        <button id="scrapeAllVenueBtn" class="btn btn-accent btn-sm">この競馬場の全レースを一括取得</button>
+                    </div>
+                    
+                    <!-- Race Grid of Selected Venue -->
+                    <div id="scheduleRaceGrid" class="schedule-race-grid"></div>
+                </div>
+
+                <div id="scheduleEmpty" class="schedule-empty">
+                    <span>日付を選択して「開催レース検索」ボタンを押してください。</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

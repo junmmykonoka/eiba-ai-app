@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: keiba-ai-app
+    env: python
+    buildCommand: pip install -r requirements.txt && python -c "from backend.app.ml.trainer import train_model; train_model(n_races=1000)"
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    autoDeploy: true
