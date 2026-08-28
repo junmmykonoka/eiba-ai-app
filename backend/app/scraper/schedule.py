@@ -21,16 +21,14 @@ class ScheduleScraper:
         """
         date_str: 'YYYY-MM-DD' または 'YYYYMMDD'
         その日の競馬場一覧と各場の1R〜12R一覧を返す。
-        1. 当日・直前の速報ページ (race.netkeiba.com/top/race_list_sub.html) を確認
-        2. 過去レースデータベース (db.netkeiba.com/race/list/...) を確認
         """
         clean_date = date_str.replace("-", "").strip()
         venues_dict: Dict[str, List[Dict[str, Any]]] = {}
 
-        # 1. Try race.netkeiba.com live schedule (直前・当日・翌日等)
+        # 1. 当日・直前の速報ページ (race.netkeiba.com は UTF-8)
         try:
             url_live = f"https://race.netkeiba.com/top/race_list_sub.html?kaisai_date={clean_date}"
-            html_live = self.client.fetch(url_live, encoding="euc-jp", use_cache=False)
+            html_live = self.client.fetch(url_live, use_cache=False)
             soup_live = BeautifulSoup(html_live, "lxml")
             links = soup_live.find_all("a", href=re.compile(r"race_id=(\d{12})"))
             
@@ -40,12 +38,11 @@ class ScheduleScraper:
                     continue
                 race_id = m.group(1)
                 
-                # レース名の抽出
-                name_elem = a.find(class_=re.compile(r"RaceName|ItemTitle|Race_Name")) or a
-                name_text = name_elem.text.strip()
-                name_text = re.sub(r"^\d+R\s*", "", name_text).strip()
-                if not name_text:
-                    name_text = f"第{int(race_id[10:12])}レース"
+                # レース名抽出（改行や余分な数字を除去）
+                raw_text = a.text.strip()
+                lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
+                race_name = lines[1] if len(lines) > 1 else (lines[0] if lines else f"第{int(race_id[10:12])}R")
+                race_name = re.sub(r"^\d+R\s*", "", race_name).strip()
 
                 code = race_id[4:6]
                 venue_name = COURSE_CODE_MAP.get(code, f"場{code}")
@@ -58,17 +55,17 @@ class ScheduleScraper:
                     venues_dict[venue_name].append({
                         "race_id": race_id,
                         "race_number": race_num,
-                        "race_name": name_text.split("\n")[0].strip(),
+                        "race_name": race_name,
                         "course": venue_name
                     })
         except Exception as e:
             print(f"Live schedule fetch notice: {e}")
 
-        # 2. If not found or empty, try db.netkeiba.com archive
+        # 2. 過去レースデータベース (db.netkeiba.com は EUC-JP)
         if not venues_dict:
             try:
                 url_db = f"https://db.netkeiba.com/race/list/{clean_date}/"
-                html_db = self.client.fetch(url_db, encoding="euc-jp", use_cache=False)
+                html_db = self.client.fetch(url_db, use_cache=False)
                 soup_db = BeautifulSoup(html_db, "lxml")
                 
                 race_links = soup_db.find_all("a", href=re.compile(r"/race/(\d{12})/"))
@@ -109,7 +106,7 @@ class ScheduleScraper:
                 "races": r_list
             })
 
-        # JRA場（東京、中山、京都、阪神等）を優先表示
+        # JRA場を優先表示
         jra_order = ["東京", "中山", "京都", "阪神", "中京", "新潟", "小倉", "福島", "札幌", "函館"]
         venues_list.sort(key=lambda v: (0 if v["course"] in jra_order else 1, jra_order.index(v["course"]) if v["course"] in jra_order else v["course"]))
 

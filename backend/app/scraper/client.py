@@ -5,7 +5,7 @@ import requests
 from typing import Optional
 
 class SafeHttpClient:
-    def __init__(self, cache_dir: Optional[str] = None, min_interval: float = 1.5):
+    def __init__(self, cache_dir: Optional[str] = None, min_interval: float = 1.0):
         self.min_interval = min_interval
         self.last_request_time = 0.0
         self.session = requests.Session()
@@ -27,29 +27,49 @@ class SafeHttpClient:
     def fetch(self, url: str, use_cache: bool = True, encoding: Optional[str] = None) -> str:
         cache_path = self._get_cache_path(url)
         
-        if use_cache and os.path.exists(cache_path):
-            with open(cache_path, "r", encoding="utf-8", errors="replace") as f:
-                return f.read()
+        # 不要な古いキャッシュによる誤動作を防ぐため、live速報系はキャッシュしない
+        if "race_list_sub.html" in url or "shutuba.html" in url:
+            use_cache = False
 
-        # Rate limiting
+        if use_cache and os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8", errors="replace") as f:
+                    return f.read()
+            except Exception:
+                pass
+
+        # レートリミット（サーバー負荷軽減）
         elapsed = time.time() - self.last_request_time
         if elapsed < self.min_interval:
             time.sleep(self.min_interval - elapsed)
 
-        resp = self.session.get(url, timeout=10)
+        resp = self.session.get(url, timeout=12)
         self.last_request_time = time.time()
         resp.raise_for_status()
 
+        # エンコーディングの適切な自動判定
+        # db.netkeiba.com は EUC-JP、race.netkeiba.com は UTF-8
         if encoding:
-            resp.encoding = encoding
+            target_encodings = [encoding, "utf-8", "euc-jp", "cp932"]
+        elif "db.netkeiba.com" in url:
+            target_encodings = ["euc-jp", "utf-8", "cp932"]
+        elif "race.netkeiba.com" in url:
+            target_encodings = ["utf-8", "euc-jp", "cp932"]
         else:
-            # Detect or fallback to apparent encoding / euc-jp / utf-8
-            if "euc-jp" in resp.text.lower() or "euc-jp" in resp.headers.get("Content-Type", "").lower():
-                resp.encoding = "euc-jp"
-            else:
-                resp.encoding = resp.apparent_encoding or "utf-8"
+            target_encodings = [resp.apparent_encoding or "utf-8", "euc-jp", "utf-8"]
 
-        html = resp.text
+        html = None
+        for enc in target_encodings:
+            if not enc: continue
+            try:
+                html = resp.content.decode(enc)
+                break
+            except Exception:
+                continue
+
+        if html is None:
+            html = resp.content.decode("utf-8", errors="replace")
+
         if use_cache:
             try:
                 with open(cache_path, "w", encoding="utf-8", errors="replace") as f:
