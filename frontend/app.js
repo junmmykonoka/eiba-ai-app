@@ -372,7 +372,15 @@ async function fetchSchedule() {
 
         if (!currentScheduleData.venues || currentScheduleData.venues.length === 0) {
             scheduleEmpty.style.display = 'block';
-            scheduleEmpty.innerHTML = `<span>${dateVal} の開催レースは見つかりませんでした。別の開催日（例: 2024-05-26 ダービー日）をお試しください。</span>`;
+            scheduleEmpty.innerHTML = `
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); padding: 16px; border-radius: 12px; max-width: 500px; text-align: left;">
+                    <strong style="color: #f87171; display: block; margin-bottom: 6px;">⚠️ 開催データが見つかりませんでした (${dateVal})</strong>
+                    <p style="font-size: 0.8rem; color: #cbd5e1; line-height: 1.6;">
+                        ・競馬（JRA）の出馬表・枠順は<strong>レース開催2日前（毎週金曜）</strong>に確定・公開されます。<br>
+                        ・未確定の未来日や平日はデータが存在しないため、<strong>「直近の開催日（土日）」</strong>またはクイックボタンの<strong>「ダービー日(5/26)」「有馬記念日(12/22)」</strong>をお試しください。
+                    </p>
+                </div>
+            `;
             return;
         }
 
